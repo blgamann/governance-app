@@ -1,34 +1,60 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useWallet } from './hooks/useWallet'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const {
+    account,
+    isConnecting,
+    isSepoliaNetwork,
+    connectWallet,
+    switchToSepolia,
+    disconnect,
+  } = useWallet()
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-6">Ethereum Wallet Connection</h1>
+
+      {!account ? (
+        <button
+          onClick={connectWallet}
+          disabled={isConnecting}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+        >
+          {isConnecting ? 'Connecting...' : 'Connect Wallet'}
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm text-gray-600">Connected Account</div>
+            <div className="font-mono">{account}</div>
+          </div>
+
+          <div>
+            <div className="text-sm text-gray-600">Network</div>
+            <div className={isSepoliaNetwork ? 'text-green-600' : 'text-orange-600'}>
+              {isSepoliaNetwork ? 'Sepolia ✓' : 'Not Sepolia'}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            {!isSepoliaNetwork && (
+              <button
+                onClick={switchToSepolia}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Switch to Sepolia
+              </button>
+            )}
+            <button
+              onClick={disconnect}
+              className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
