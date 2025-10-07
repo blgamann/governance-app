@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { BrowserProvider, JsonRpcSigner } from 'ethers';
+import { useState, useEffect, useCallback } from 'react';
+import { BrowserProvider, JsonRpcSigner, formatEther } from 'ethers';
 
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
 
@@ -9,16 +9,29 @@ export function useWallet() {
   const [provider, setProvider] = useState<BrowserProvider | null>(null);
   const [signer, setSigner] = useState<JsonRpcSigner | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [ethBalance, setEthBalance] = useState<string>('0');
+
+  const updateBalance = useCallback(async (provider: BrowserProvider, address: string) => {
+    try {
+      const balance = await provider.getBalance(address);
+      setEthBalance(formatEther(balance));
+    } catch (error) {
+      console.error('Failed to fetch ETH balance:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (window.ethereum) {
       const provider = new BrowserProvider(window.ethereum);
       setProvider(provider);
 
-      // Check if already connected
-      window.ethereum.request({ method: 'eth_accounts' }).then((accounts: string[]) => {
+      // Check if already connected and get signer
+      window.ethereum.request({ method: 'eth_accounts' }).then(async (accounts: string[]) => {
         if (accounts.length > 0) {
           setAccount(accounts[0]);
+          const signer = await provider.getSigner();
+          setSigner(signer);
+          await updateBalance(provider, accounts[0]);
         }
       });
 
@@ -28,14 +41,29 @@ export function useWallet() {
       });
 
       // Listen for account changes
-      const handleAccountsChanged = (accounts: string[]) => {
-        setAccount(accounts.length > 0 ? accounts[0] : null);
+      const handleAccountsChanged = async (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+          const signer = await provider.getSigner();
+          setSigner(signer);
+          await updateBalance(provider, accounts[0]);
+        } else {
+          setAccount(null);
+          setSigner(null);
+          setEthBalance('0');
+        }
       };
 
       // Listen for chain changes
-      const handleChainChanged = (chainId: string) => {
-        setChainId(chainId);
-        window.location.reload(); // Recommended by MetaMask
+      const handleChainChanged = async (newChainId: string) => {
+        setChainId(newChainId);
+        // Update signer and balance without recreating provider
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          const signer = await provider.getSigner();
+          setSigner(signer);
+          await updateBalance(provider, accounts[0]);
+        }
       };
 
       window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -46,7 +74,7 @@ export function useWallet() {
         window.ethereum?.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, []);
+  }, [updateBalance]);
 
   const connectWallet = async () => {
     if (!window.ethereum) {
@@ -64,6 +92,7 @@ export function useWallet() {
       if (provider) {
         const signer = await provider.getSigner();
         setSigner(signer);
+        await updateBalance(provider, accounts[0]);
       }
     } catch (error) {
       console.error('Failed to connect wallet:', error);
@@ -110,7 +139,14 @@ export function useWallet() {
   const disconnect = () => {
     setAccount(null);
     setSigner(null);
+    setEthBalance('0');
   };
+
+  const refreshBalance = useCallback(async () => {
+    if (provider && account) {
+      await updateBalance(provider, account);
+    }
+  }, [provider, account, updateBalance]);
 
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
 
@@ -121,9 +157,11 @@ export function useWallet() {
     signer,
     isConnecting,
     isSepoliaNetwork,
+    ethBalance,
     connectWallet,
     switchToSepolia,
     disconnect,
+    refreshBalance,
   };
 }
 
