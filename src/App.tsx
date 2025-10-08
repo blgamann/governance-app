@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useWallet } from './hooks/useWallet'
 import { useGovernanceToken } from './hooks/useGovernanceToken'
 import { useGovernance } from './hooks/useGovernance'
