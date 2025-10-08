@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Contract, formatUnits } from 'ethers';
+import { Contract, formatUnits, JsonRpcProvider } from 'ethers';
 import contractData from '../../contracts/GovernanceToken.json';
 
 interface TokenInfo {
@@ -23,7 +23,9 @@ export function useGovernanceToken(provider: any, signer: any, account: string |
 
     try {
       setLoading(true);
-      const contract = new Contract(contractData.address, contractData.abi, provider);
+      // Use Alchemy RPC for reading to avoid MetaMask caching issues
+      const rpcProvider = new JsonRpcProvider(import.meta.env.VITE_SEPOLIA_RPC_URL);
+      const contract = new Contract(contractData.address, contractData.abi, rpcProvider);
 
       const [name, symbol, decimals, totalSupply, balance] = await Promise.all([
         contract.name(),

@@ -22,7 +22,10 @@ export function useWallet() {
 
   useEffect(() => {
     if (window.ethereum) {
-      const provider = new BrowserProvider(window.ethereum);
+      // Create fresh provider - no caching
+      const createFreshProvider = () => new BrowserProvider(window.ethereum);
+
+      const provider = createFreshProvider();
       setProvider(provider);
 
       // Check if already connected and get signer
@@ -42,11 +45,15 @@ export function useWallet() {
 
       // Listen for account changes
       const handleAccountsChanged = async (accounts: string[]) => {
+        // Recreate provider to avoid caching
+        const newProvider = createFreshProvider();
+        setProvider(newProvider);
+
         if (accounts.length > 0) {
           setAccount(accounts[0]);
-          const signer = await provider.getSigner();
+          const signer = await newProvider.getSigner();
           setSigner(signer);
-          await updateBalance(provider, accounts[0]);
+          await updateBalance(newProvider, accounts[0]);
         } else {
           setAccount(null);
           setSigner(null);
@@ -57,12 +64,16 @@ export function useWallet() {
       // Listen for chain changes
       const handleChainChanged = async (newChainId: string) => {
         setChainId(newChainId);
-        // Update signer and balance without recreating provider
+
+        // Recreate provider to avoid caching
+        const newProvider = createFreshProvider();
+        setProvider(newProvider);
+
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
-          const signer = await provider.getSigner();
+          const signer = await newProvider.getSigner();
           setSigner(signer);
-          await updateBalance(provider, accounts[0]);
+          await updateBalance(newProvider, accounts[0]);
         }
       };
 
