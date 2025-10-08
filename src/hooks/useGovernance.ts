@@ -18,6 +18,7 @@ export function useGovernance(provider: any, signer: any, account: string | null
   const [loading, setLoading] = useState(false);
   const [voting, setVoting] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [proposing, setProposing] = useState(false);
 
   const fetchProposals = useCallback(async () => {
     if (!provider) {
@@ -36,8 +37,6 @@ export function useGovernance(provider: any, signer: any, account: string | null
       const count = await contract.proposalCount();
       const proposalCount = Number(count);
 
-      console.log('Proposal count:', proposalCount);
-
       if (proposalCount === 0) {
         setProposals([]);
         setLoading(false);
@@ -47,16 +46,12 @@ export function useGovernance(provider: any, signer: any, account: string | null
       // Fetch all proposals
       const proposalPromises = [];
       for (let i = proposalCount; i >= 1; i--) {
-        console.log('Fetching proposal ID:', i);
         proposalPromises.push(
           Promise.all([
             contract.getProposal(i),
             contract.getProposalState(i),
             account ? contract.hasVoted(i, account) : Promise.resolve(false)
           ]).then(([proposalData, state, hasVoted]) => {
-            console.log(`Proposal ${i} data:`, proposalData);
-            console.log(`Proposal ${i} state:`, state);
-            console.log(`Proposal ${i} hasVoted:`, hasVoted);
             return {
               id: i,
               description: proposalData[0],
@@ -75,7 +70,6 @@ export function useGovernance(provider: any, signer: any, account: string | null
       }
 
       const fetchedProposals = (await Promise.all(proposalPromises)).filter(p => p !== null);
-      console.log('Fetched proposals:', fetchedProposals);
       setProposals(fetchedProposals);
     } catch (error) {
       console.error('Failed to fetch proposals:', error);
@@ -167,13 +161,43 @@ export function useGovernance(provider: any, signer: any, account: string | null
     }
   };
 
+  const propose = async (description: string) => {
+    if (!signer) {
+      throw new Error('No signer available');
+    }
+
+    try {
+      setProposing(true);
+      const contract = new Contract(governanceData.address, governanceData.abi, signer);
+
+      // Use zero address and empty calldata since we don't need execution
+      const target = '0x0000000000000000000000000000000000000000';
+      const callData = '0x00';
+
+      const tx = await contract.propose(description, target, callData);
+      await tx.wait();
+
+      // Refresh all proposals after creation
+      await fetchProposals();
+
+      return true;
+    } catch (error) {
+      console.error('Failed to create proposal:', error);
+      throw error;
+    } finally {
+      setProposing(false);
+    }
+  };
+
   return {
     proposals,
     loading,
     voting,
     executing,
+    proposing,
     vote,
     executeProposal,
+    propose,
     refreshProposals: fetchProposals
   };
 }

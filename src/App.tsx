@@ -24,11 +24,13 @@ function App() {
   } = useWallet()
 
   const { tokenInfo, loading, exchanging, exchange } = useGovernanceToken(provider, signer, account)
-  const { proposals, loading: proposalsLoading, voting, vote, executeProposal, refreshProposals } = useGovernance(provider, signer, account)
+  const { proposals, loading: proposalsLoading, voting, proposing, vote, executeProposal, propose } = useGovernance(provider, signer, account)
   const [points, setPoints] = useState(0)
   const [swapAmount, setSwapAmount] = useState('')
   const [activeTab, setActiveTab] = useState<'exchange' | 'vote'>('exchange')
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [proposalDescription, setProposalDescription] = useState('')
 
   const showToast = (message: string, type: 'success' | 'error') => {
     const id = Date.now()
@@ -115,6 +117,29 @@ function App() {
     }
   }
 
+  const handleCreateProposal = async () => {
+    if (!proposalDescription.trim()) {
+      showToast('Please enter a proposal description', 'error')
+      return
+    }
+
+    try {
+      await propose(proposalDescription)
+      showToast('Successfully created proposal!', 'success')
+      setProposalDescription('')
+      setShowCreateForm(false)
+    } catch (error: any) {
+      console.error('Create proposal failed:', error)
+      let errorMessage = 'Failed to create proposal. '
+      if (error?.message?.includes('user rejected')) {
+        errorMessage += 'Transaction was rejected.'
+      } else {
+        errorMessage += error?.message || 'Please try again.'
+      }
+      showToast(errorMessage, 'error')
+    }
+  }
+
   const getStateColor = (state: string) => {
     switch (state) {
       case 'Active': return 'text-blue-600 bg-blue-50'
@@ -155,7 +180,7 @@ function App() {
         </div>
       ) : (
         <div>
-          <div className="fixed top-4 right-4 space-y-3">
+          <div className="hidden md:block fixed top-4 right-4 space-y-3 max-w-sm z-40">
             {/* Wallet Info */}
             <div className="bg-white border border-gray-200 rounded shadow-lg p-4 space-y-3">
               <div>
@@ -238,10 +263,7 @@ function App() {
                   Exchange
                 </button>
                 <button
-                  onClick={() => {
-                    setActiveTab('vote')
-                    refreshProposals() // Refresh proposals when switching to vote tab
-                  }}
+                  onClick={() => setActiveTab('vote')}
                   className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
                     activeTab === 'vote'
                       ? 'bg-blue-500 text-white'
@@ -331,13 +353,37 @@ function App() {
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-semibold">Proposals</h2>
                     <button
-                      onClick={refreshProposals}
-                      disabled={proposalsLoading}
-                      className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                      onClick={() => setShowCreateForm(!showCreateForm)}
+                      className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
                     >
-                      {proposalsLoading ? 'Loading...' : 'Refresh'}
+                      {showCreateForm ? 'Cancel' : 'Create Proposal'}
                     </button>
                   </div>
+
+                  {/* Create Proposal Form */}
+                  {showCreateForm && (
+                    <div className="mb-4 p-4 bg-gray-50 rounded-xl">
+                      <div className="mb-3">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Proposal Description
+                        </label>
+                        <textarea
+                          value={proposalDescription}
+                          onChange={(e) => setProposalDescription(e.target.value)}
+                          placeholder="Enter proposal description..."
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        />
+                      </div>
+                      <button
+                        onClick={handleCreateProposal}
+                        disabled={proposing || !proposalDescription.trim()}
+                        className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {proposing ? 'Creating...' : 'Create Proposal'}
+                      </button>
+                    </div>
+                  )}
 
                   {!isSepoliaNetwork ? (
                     <div className="text-center py-8">
@@ -397,36 +443,34 @@ function App() {
                             </div>
                           </div>
 
-                          {/* Actions */}
-                          <div className="flex gap-2">
-                            {proposal.state === 'Active' && (
-                              <>
-                                <button
-                                  onClick={() => handleVote(proposal.id, true)}
-                                  disabled={voting || proposal.hasVoted}
-                                  className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
-                                >
-                                  {proposal.hasVoted ? 'Already Voted' : 'Vote For'}
-                                </button>
-                                <button
-                                  onClick={() => handleVote(proposal.id, false)}
-                                  disabled={voting || proposal.hasVoted}
-                                  className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
-                                >
-                                  {proposal.hasVoted ? 'Already Voted' : 'Vote Against'}
-                                </button>
-                              </>
-                            )}
-                            {proposal.state === 'Succeeded' && (
+                          {/* Execute Button - always visible */}
+                          <button
+                            onClick={() => handleExecute(proposal.id)}
+                            disabled={proposal.state !== 'Succeeded' || voting || proposal.executed}
+                            className="w-full py-3 mb-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
+                          >
+                            {proposal.executed ? 'Already Executed' : proposal.state === 'Succeeded' ? 'Execute Proposal' : `Execute (${proposal.state})`}
+                          </button>
+
+                          {/* Vote Actions */}
+                          {proposal.state === 'Active' && (
+                            <div className="flex gap-2">
                               <button
-                                onClick={() => handleExecute(proposal.id)}
-                                disabled={voting}
-                                className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
+                                onClick={() => handleVote(proposal.id, true)}
+                                disabled={voting || proposal.hasVoted}
+                                className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
                               >
-                                Execute
+                                {proposal.hasVoted ? 'Already Voted' : 'Vote For'}
                               </button>
-                            )}
-                          </div>
+                              <button
+                                onClick={() => handleVote(proposal.id, false)}
+                                disabled={voting || proposal.hasVoted}
+                                className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
+                              >
+                                {proposal.hasVoted ? 'Already Voted' : 'Vote Against'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
